@@ -1,298 +1,1377 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Grayline MK-IV — Rifle Visual Study</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grayline Weapon Visual Archive</title>
   <style>
-    :html,body{height:100%;margin:0;overflow:hidden}
-    :root{color-scheme:dark}
-    body{
-      background:#4a4b4d;
-      color:#dce1df;
-      font-family:Inter,Segoe UI,Arial,sans-serif;
-      user-select:none;
-      cursor:crosshair;
+    :root {
+      color-scheme: dark;
     }
-    canvas{display:block;width:100vw;height:100vh}
-    .ui{position:fixed;inset:18px 22px auto 22px;display:flex;align-items:flex-start;justify-content:space-between;pointer-events:none}
-    .brand{font-size:11px;letter-spacing:.24em;text-transform:uppercase;opacity:.48}.brand b{display:block;margin-bottom:5px;color:#eef1ed;font-size:13px;opacity:.9;letter-spacing:.12em}
-    .controls{text-align:right;font-size:10px;text-transform:uppercase;letter-spacing:.15em;line-height:1.9;opacity:.42}
-    .hint{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);font-size:9px;letter-spacing:.16em;text-transform:uppercase;opacity:.28;transition:.5s}
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #171819;
+    }
+
+    body {
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      user-select: none;
+      cursor: crosshair;
+    }
+
+    canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .hud {
+      position: fixed;
+      inset: 22px 28px auto;
+      z-index: 10;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .brand {
+      color: #939897;
+      font-size: 10px;
+      letter-spacing: .28em;
+      text-transform: uppercase;
+    }
+
+    .brand strong {
+      display: block;
+      margin-bottom: 5px;
+      color: #edf1ee;
+      font-size: 13px;
+      letter-spacing: .16em;
+    }
+
+    .controls {
+      color: #777d7a;
+      text-align: right;
+      font-size: 9px;
+      line-height: 2;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .name {
+      position: fixed;
+      left: 28px;
+      bottom: 19px;
+      z-index: 10;
+      color: #8e9491;
+      font-size: 10px;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
+
+    .navigation {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      z-index: 10;
+      display: flex;
+      gap: 7px;
+      transform: translateX(-50%);
+    }
+
+    .dot {
+      width: 34px;
+      height: 3px;
+      padding: 0;
+      border: 0;
+      background: #717675;
+      opacity: .28;
+      cursor: pointer;
+      transition: opacity .25s, background .25s;
+    }
+
+    .dot.active {
+      background: #d9dfdb;
+      opacity: 1;
+    }
+
+    .hint {
+      position: fixed;
+      right: 28px;
+      bottom: 22px;
+      z-index: 10;
+      color: #777d7a;
+      font-size: 9px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body>
-  <canvas id="c"></canvas>
-  <div class="ui"><div class="brand"><b>GRAYLINE</b>MK-IV // visual study</div><div class="controls">Left hold / Left click — burst<br>Right click — single discharge</div></div>
-  <div class="hint" id="hint">hold to cycle</div>
+  <canvas id="scene"></canvas>
+
+  <div class="hud">
+    <div class="brand">
+      <strong id="series">GRAYLINE // 01</strong>
+      <span id="subtitle">POLYMER SERVICE WEAPON</span>
+    </div>
+    <div class="controls">
+      Left hold — automatic<br>
+      Left / Right click — shot
+    </div>
+  </div>
+
+  <div class="name" id="weaponName">GL-01 Warden</div>
+
+  <nav class="navigation" aria-label="Weapon selection">
+    <button class="dot active" aria-label="Warden"></button>
+    <button class="dot" aria-label="Helios"></button>
+    <button class="dot" aria-label="Voidbreach"></button>
+  </nav>
+
+  <div class="hint">A / D · change weapon</div>
+
   <script>
-    'use strict';
+    "use strict";
 
-    const canvas = document.getElementById('c');
-    const ctx = canvas.getContext('2d');
-    const hint = document.getElementById('hint');
-    let w = 0, h = 0, dpr = 1;
-    let time = 0, last = 0;
-    let leftDown = false;
-    let recoil = 0, bolt = 0, muzzle = 0, screenKick = 0;
-    let flashSeed = 0, shotCount = 0;
+    const canvas = document.querySelector("#scene");
+    const ctx = canvas.getContext("2d", { alpha: false });
+
+    let width = 0;
+    let height = 0;
+    let pixelRatio = 1;
+    let lastFrame = 0;
+    let elapsed = 0;
+    let mouseDown = false;
     let lastShot = -1000;
-    let particles = [], casings = [], smoke = [], tracers = [];
-    let embers = [];
+    let recoil = 0;
+    let boltTravel = 0;
+    let muzzleAmount = 0;
+    let weaponIndex = 0;
 
-    function resize(){
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      w = innerWidth; h = innerHeight;
-      canvas.width = w*dpr; canvas.height = h*dpr;
-      ctx.setTransform(dpr,0,0,dpr,0,0);
+    const particles = [];
+    const smoke = [];
+    const casings = [];
+    const tracers = [];
+    const rings = [];
+    const sparks = [];
+    const embers = [];
+
+    const weaponNames = [
+      "GL-01 Warden",
+      "LX-7 Helios",
+      "VX-4 Voidbreach"
+    ];
+
+    const weaponSubtitles = [
+      "POLYMER SERVICE WEAPON",
+      "PHOTON SIDEARM",
+      "PLASMA LONG WEAPON"
+    ];
+
+    function resize() {
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width * pixelRatio;
+      canvas.height = height * pixelRatio;
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
     }
-    addEventListener('resize',resize); resize();
 
-    for(let i=0;i<48;i++){
-      embers.push({x:Math.random(),y:Math.random(),r:Math.random()*1.2+.2,a:Math.random()*.16,s:Math.random()*.12+.02,p:Math.random()*6.28});
+    window.addEventListener("resize", resize);
+    resize();
+
+    for (let i = 0; i < 40; i++) {
+      embers.push({
+        x: Math.random(),
+        y: Math.random(),
+        radius: 0.3 + Math.random() * 0.8,
+        alpha: 0.025 + Math.random() * 0.05,
+        phase: Math.random() * Math.PI * 2
+      });
     }
 
-    function rr(x,y,w,h,r){
-      r=Math.min(r,w*.5,h*.5);
-      ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
+    function roundedRectangle(x, y, w, h, radius = 0) {
+      radius = Math.min(radius, w * 0.5, h * 0.5);
+
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + w, y, x + w, y + h, radius);
+      ctx.arcTo(x + w, y + h, x, y + h, radius);
+      ctx.arcTo(x, y + h, x, y, radius);
+      ctx.arcTo(x, y, x + w, y, radius);
+      ctx.closePath();
     }
 
-    function line(x1,y1,x2,y2){ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();}
-
-    function spawnSmoke(x,y,n=1){
-      for(let i=0;i<n;i++) smoke.push({x:x+(Math.random()-0.5)*12,y:y+(Math.random()-0.5)*8,vx:Math.random()*38-6,vy:-Math.random()*22-5,r:8+Math.random()*12,a:.16+Math.random()*.12,life:0,max:1.2+Math.random()*.8,spin:Math.random()*6.28});
+    function strokeLine(x1, y1, x2, y2) {
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
     }
 
-    function ejectCasing(gx,gy,angle){
-      casings.push({x:gx,y:gy,vx:150+Math.random()*50,vy:-170-Math.random()*70,vr:(Math.random()-.5)*15,rot:angle+.3,a:1,life:0,max:1.8,drop:180,bright:Math.random()});
+    function createMetalGradient(x, y, w, h, light = 0.5) {
+      const gradient = ctx.createLinearGradient(x, y, x, y + h);
+
+      gradient.addColorStop(0, "#a7aba9");
+      gradient.addColorStop(0.07, `rgba(130, 135, 133, ${light})`);
+      gradient.addColorStop(0.23, "#303435");
+      gradient.addColorStop(0.45, "#17191a");
+      gradient.addColorStop(0.62, "#555a59");
+      gradient.addColorStop(0.82, "#242728");
+      gradient.addColorStop(1, "#101213");
+
+      return gradient;
     }
 
-    function fire(){
-      const now=performance.now();
-      if(now-lastShot<78) return;
-      lastShot=now; shotCount++;
-      recoil=1; bolt=1; muzzle=1; screenKick=1; flashSeed=Math.random()*100;
-      hint.style.opacity='.05';
+    function createWoodGradient(x, y, w, h) {
+      const gradient = ctx.createLinearGradient(x, y, x + w, y + h);
 
-      const scale=Math.min(w,h)/720;
-      const baseX=w*.31 - recoil*5*scale;
-      const baseY=h*.48;
-      const muzzleX=baseX+650*scale;
-      const muzzleY=baseY-18*scale;
+      gradient.addColorStop(0, "#6a3927");
+      gradient.addColorStop(0.18, "#4a281d");
+      gradient.addColorStop(0.42, "#83503a");
+      gradient.addColorStop(0.68, "#593124");
+      gradient.addColorStop(1, "#322016");
 
-      tracers.push({x1:muzzleX,y1:muzzleY,x2:muzzleX+Math.min(w*.55,520),y2:muzzleY-3-Math.random()*7,a:1,w:1.2+Math.random()*.8});
-      ejectCasing(baseX+278*scale,baseY-57*scale,Math.random());
-      spawnSmoke(muzzleX,muzzleY,4);
+      return gradient;
+    }
 
-      for(let i=0;i<14;i++){
-        const angle=Math.random()*2*Math.PI;
-        const sp=20+Math.random()*190;
-        particles.push({x:muzzleX,y:muzzleY,vx:Math.cos(angle)*sp+220,vy:Math.sin(angle)*sp,a:1,r:Math.random()*2.2+.5,life:0,max:.12+Math.random()*.28});
+    function origin() {
+      const scale = Math.min(width, height) / 720;
+
+      return {
+        x: width * 0.29 - recoil * scale * 14,
+        y: height * 0.50,
+        scale
+      };
+    }
+
+    function muzzlePosition() {
+      const o = origin();
+
+      if (weaponIndex === 0) {
+        return {
+          x: o.x + 690 * o.scale,
+          y: o.y - 12 * o.scale
+        };
+      }
+
+      if (weaponIndex === 1) {
+        return {
+          x: o.x + 650 * o.scale,
+          y: o.y - 2 * o.scale
+        };
+      }
+
+      return {
+        x: o.x + 720 * o.scale,
+        y: o.y + 8 * o.scale
+      };
+    }
+
+    function createStandardShot(mx, my, o) {
+      tracers.push({
+        type: 0,
+        x1: mx,
+        y1: my,
+        x2: mx + Math.min(width * 0.56, 620),
+        y2: my - 2 - Math.random() * 7,
+        alpha: 1,
+        width: 1.3
+      });
+
+      casings.push({
+        x: o.x + 270 * o.scale,
+        y: o.y - 58 * o.scale,
+        vx: 150 + Math.random() * 110,
+        vy: -210 - Math.random() * 90,
+        vr: (Math.random() - 0.5) * 18,
+        rotation: Math.random() * Math.PI * 2,
+        alpha: 1,
+        life: 0,
+        maxLife: 1.8
+      });
+
+      for (let i = 0; i < 5; i++) {
+        smoke.push({
+          x: mx,
+          y: my,
+          vx: 16 + Math.random() * 25,
+          vy: -10 - Math.random() * 18,
+          radius: 7 + Math.random() * 9,
+          alpha: 0.22,
+          life: 0,
+          maxLife: 1.2 + Math.random() * 0.7,
+          spin: Math.random() * Math.PI * 2
+        });
+      }
+
+      for (let i = 0; i < 18; i++) {
+        const angle = (Math.random() - 0.5) * 1.1;
+        const velocity = 120 + Math.random() * 330;
+
+        particles.push({
+          x: mx,
+          y: my,
+          vx: Math.cos(angle) * velocity + 180,
+          vy: Math.sin(angle) * velocity,
+          alpha: 1,
+          radius: 0.5 + Math.random() * 2,
+          life: 0,
+          maxLife: 0.18 + Math.random() * 0.28,
+          type: 0
+        });
       }
     }
 
-    addEventListener('contextmenu',e=>e.preventDefault());
-    addEventListener('mousedown',e=>{ if(e.button===0){leftDown=true;fire();} if(e.button===2)fire(); });
-    addEventListener('mouseup',e=>{if(e.button===0)leftDown=false;});
-    addEventListener('mouseleave',()=>leftDown=false);
+    function createLaserShot(mx, my) {
+      tracers.push({
+        type: 1,
+        x1: mx,
+        y1: my,
+        x2: mx + Math.min(width * 0.62, 680),
+        y2: my,
+        alpha: 1,
+        width: 2.4
+      });
 
-    function drawBackground(t){
-      let g=ctx.createRadialGradient(w*.36,h*.46,20,w*.5,h*.52,Math.max(w,h)*.75);
-      g.addColorStop(0,'#56585a');g.addColorStop(.5,'#4c4d4f');g.addColorStop(1,'#3d3e40');
-      ctx.fillStyle=g;ctx.fillRect(0,0,w,h);
+      rings.push({
+        x: mx,
+        y: my,
+        radius: 4,
+        alpha: 1,
+        growth: 42,
+        cyan: true
+      });
 
-      ctx.save();ctx.globalAlpha=.018;ctx.strokeStyle='#fff';ctx.lineWidth=.6;
-      for(let i=0;i<18;i++){let y=i*62+t*.08%62;line(0,y,w,y)}
-      ctx.restore();
+      for (let i = 0; i < 38; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const velocity = 40 + Math.random() * 210;
 
-      for(const d of embers){
-        let x=d.x*w+Math.sin(t*.00012+d.p)*8;
-        let y=d.y*h+Math.cos(t*.00009+d.p)*5;
-        ctx.globalAlpha=d.a*(.65+.35*Math.sin(t*.001+d.p));ctx.fillStyle='#cbd1cd';ctx.beginPath();ctx.arc(x,y,d.r,0,6.28);ctx.fill();
-      }ctx.globalAlpha=1;
+        sparks.push({
+          x: mx,
+          y: my,
+          vx: Math.cos(angle) * velocity + 100,
+          vy: Math.sin(angle) * velocity,
+          alpha: 0.9,
+          radius: 0.5 + Math.random() * 1.5,
+          life: 0,
+          maxLife: 0.25 + Math.random() * 0.55
+        });
+      }
     }
 
-    function metalGradient(x,y,ww,hh,light=.42){
-      let g=ctx.createLinearGradient(x,y,x,y+hh);
-      g.addColorStop(0,'rgba(205,209,207,'+light+')');g.addColorStop(.08,'#777b7b');g.addColorStop(.22,'#343738');g.addColorStop(.54,'#17191a');g.addColorStop(.73,'#414445');g.addColorStop(.9,'#252728');g.addColorStop(1,'#111314');
-      return g;
+    function createPlasmaShot(mx, my) {
+      tracers.push({
+        type: 2,
+        x1: mx,
+        y1: my,
+        x2: mx + Math.min(width * 0.58, 600),
+        y2: my - 4 - Math.random() * 12,
+        alpha: 1,
+        width: 3.2
+      });
+
+      rings.push({
+        x: mx,
+        y: my,
+        radius: 5,
+        alpha: 1,
+        growth: 64,
+        cyan: false
+      });
+
+      for (let i = 0; i < 26; i++) {
+        const angle = (Math.random() - 0.5) * 0.8;
+        const velocity = 80 + Math.random() * 250;
+
+        particles.push({
+          x: mx,
+          y: my,
+          vx: Math.cos(angle) * velocity + 150,
+          vy: Math.sin(angle) * velocity,
+          alpha: 1,
+          radius: 0.7 + Math.random() * 2.5,
+          life: 0,
+          maxLife: 0.15 + Math.random() * 0.38,
+          type: 2
+        });
+      }
     }
 
-    function woodGradient(x,y,ww,hh){
-      let g=ctx.createLinearGradient(x,y,x+ww,y+hh);
-      g.addColorStop(0,'#7e3d22');g.addColorStop(.15,'#4d281b');g.addColorStop(.38,'#8c4d2d');g.addColorStop(.58,'#60301f');g.addColorStop(.78,'#9a5a35');g.addColorStop(1,'#3b2117');
-      return g;
+    function fireWeapon() {
+      const now = performance.now();
+      const cooldown =
+        weaponIndex === 1 ? 150 :
+        weaponIndex === 2 ? 210 :
+        78;
+
+      if (now - lastShot < cooldown) {
+        return;
+      }
+
+      lastShot = now;
+      recoil = 1;
+      boltTravel = 1;
+      muzzleAmount = 1;
+
+      const position = muzzlePosition();
+      const o = origin();
+
+      if (weaponIndex === 0) {
+        createStandardShot(position.x, position.y, o);
+      } else if (weaponIndex === 1) {
+        createLaserShot(position.x, position.y);
+      } else {
+        createPlasmaShot(position.x, position.y);
+      }
     }
 
-    function drawGun(s,t){
+    window.addEventListener("contextmenu", event => {
+      event.preventEventDefault();
+    });
+
+    window.addEventListener("mousedown", event => {
+      if (event.button === 0) {
+        mouseDown = true;
+        fireWeapon();
+      }
+
+      if (event.button === 2) {
+        fireWeapon();
+      }
+    });
+
+    window.addEventListener("mouseup", event => {
+      if (event.button === 0) {
+        mouseDown = false;
+      }
+    });
+
+    window.addEventListener("mouseleave", () => {
+      mouseDown = false;
+    });
+
+    function setWeapon(index) {
+      weaponIndex = (index + 3) % 3;
+
+      document.querySelectorAll(".dot").forEach((dot, dotIndex) => {
+        dot.classList.toggle("active", dotIndex === weaponIndex);
+      });
+
+      document.querySelector("#series").textContent =
+        `GRAYLINE // 0${weaponIndex + 1}`;
+
+      document.querySelector("#subtitle").textContent =
+        weaponSubtitles[weaponIndex];
+
+      document.querySelector("#weaponName").textContent =
+        weaponNames[weaponIndex];
+
+      particles.length = 0;
+      smoke.length = 0;
+      casings.length = 0;
+      tracers.length = 0;
+      rings.length = 0;
+      sparks.length = 0;
+    }
+
+    window.addEventListener("keydown", event => {
+      if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") {
+        setWeapon(weaponIndex + 1);
+      }
+
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") {
+        setWeapon(weaponIndex - 1);
+      }
+    });
+
+    document.querySelectorAll(".dot").forEach((dot, index) => {
+      dot.addEventListener("click", () => setWeapon(index));
+    });
+
+    function drawBackground(time) {
+      const gradient = ctx.createRadialGradient(
+        width * 0.38,
+        height * 0.46,
+        10,
+        width * 0.48,
+        height * 0.54,
+        Math.max(width, height) * 0.78
+      );
+
+      gradient.addColorStop(0, "#303233");
+      gradient.addColorStop(0.58, "#262829");
+      gradient.addColorStop(1, "#171819");
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, width, height);
+
       ctx.save();
-      const recoilPx=recoil*12*s;
-      const boltPx=bolt*11*s;
-      const cx=w*.31-recoilPx+(screenKick*1.5);
-      const cy=h*.48;
-      ctx.translate(cx,cy);
-      ctx.rotate(-.018-recoil*.009);
+      ctx.globalAlpha = 0.018;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = 0.5;
 
-      // soft projected shadow
-      ctx.save();ctx.rotate(.018);ctx.globalAlpha=.30;ctx.filter='blur(10px)';ctx.fillStyle='#202122';rr(-55*s,82*s,630*s,20*s,12*s);ctx.fill();ctx.restore();
+      for (let i = 0; i < 16; i++) {
+        const y = i * 68 + (time * 0.012) % 68;
+        strokeLine(0, y, width, y);
+      }
 
-      // rear sight
-      ctx.fillStyle='#17191a';rr(-44*s,-37*s,92*s,9*s,3*s);ctx.fill();
-      ctx.fillStyle='#303435';rr(-28*s,-45*s,64*s,13*s,3*s);ctx.fill();
-      ctx.fillStyle='#090a0a';rr(-14*s,-39*s,36*s,5*s,2*s);ctx.fill();
+      for (const ember of embers) {
+        const x =
+          ember.x * width +
+          Math.sin(time * 0.00008 + ember.phase) * 5;
 
-      // stock top rail
-      ctx.fillStyle=metalGradient(-20*s,-16*s,232*s,30*s,.6);rr(-20*s,-16*s,232*s,30*s,5*s);ctx.fill();
-      ctx.fillStyle='#17191a';for(let i=0;i<9;i++){rr((5+i*21)*s,-12*s,12*s,5*s,1*s);ctx.fill()}
+        const y =
+          ember.y * height +
+          Math.cos(time * 0.00007 + ember.phase) * 4;
 
-      // handguard / wood
-      ctx.save();ctx.beginPath();ctx.moveTo(145*s,-15*s);ctx.lineTo(312*s,-30*s);ctx.lineTo(332*s,42*s);ctx.lineTo(160*s,48*s);ctx.closePath();ctx.clip();
-      ctx.fillStyle=woodGradient(145*s,-30*s,190*s,78*s);ctx.fillRect(140*s,-34*s,200*s,86*s);
-      ctx.globalAlpha=.22;ctx.strokeStyle='#24140d';ctx.lineWidth=1*s;
-      for(let i=0;i<8;i++){ctx.beginPath();ctx.moveTo(150*s,(i*10-24)*s);ctx.bezierCurveTo(220*s,(i*10-34)*s,260*s,(i*10+6)*s,330*s,(i*10-18)*s);ctx.stroke()}
+        ctx.globalAlpha = ember.alpha;
+        ctx.fillStyle = "#dfe5df";
+        ctx.beginPath();
+        ctx.arc(x, y, ember.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       ctx.restore();
-      ctx.strokeStyle='#3d251a';ctx.lineWidth=2*s;ctx.beginPath();ctx.moveTo(145*s,-15*s);ctx.lineTo(312*s,-30*s);ctx.lineTo(332*s,42*s);ctx.lineTo(160*s,48*s);ctx.closePath();ctx.stroke();
+    }
 
-      // barrel shroud
-      ctx.fillStyle=metalGradient(298*s,-31*s,258*s,70*s,.56);rr(298*s,-31*s,258*s,70*s,8*s);ctx.fill();
-      ctx.fillStyle='#232627';rr(317*s,-21*s,222*s,50*s,5*s);ctx.fill();
-      ctx.fillStyle='#121415';rr(328*s,-14*s,207*s,36*s,4*s);ctx.fill();
-      ctx.fillStyle='#414546';for(let i=0;i<9;i++){rr((338+i*20)*s,-10*s,9*s,28*s,2*s);ctx.fill();}
+    function drawShadow(scale) {
+      ctx.save();
+      ctx.globalAlpha = 0.34;
+      ctx.filter = `blur(${10 * scale}px)`;
+      ctx.fillStyle = "#101112";
+      roundedRectangle(-220 * scale, 112 * scale, 870 * scale, 18 * scale, 10 * scale);
+      ctx.fill();
+      ctx.restore();
+      ctx.filter = "none";
+    }
 
-      // barrel
-      ctx.fillStyle=metalGradient(500*s,-18*s,185*s,31*s,.8);rr(500*s,-18*s,185*s,31*s,7*s);ctx.fill();
-      ctx.fillStyle='#161819';rr(527*s,-11*s,126*s,8*s,3*s);ctx.fill();
+    function drawWarden(scale) {
+      ctx.fillStyle = "#3b1e14";
+      roundedRectangle(-205 * scale, -1 * scale, 210 * scale, 78 * scale, 10 * scale);
+      ctx.fill();
 
-      // muzzle assembly
-      ctx.fillStyle='#17191a';rr(663*s,-25*s,39*s,44*s,5*s);ctx.fill();
-      ctx.fillStyle=metalGradient(665*s,-20*s,61*s,34*s,.66);rr(665*s,-20*s,61*s,34*s,5*s);ctx.fill();
-      ctx.fillStyle='#080909';rr(718*s,-13*s,16*s,20*s,3*s);ctx.fill();
-      ctx.strokeStyle='#606565';ctx.lineWidth=1*s;line(681*s,-15*s,681*s,9*s);line(699*s,-15*s,699*s,9*s);
+      ctx.fillStyle = "#5a3020";
+      roundedRectangle(-195 * scale, 8 * scale, 178 * scale, 49 * scale, 8 * scale);
+      ctx.fill();
 
-      // receiver
-      ctx.fillStyle=metalGradient(38*s,-33*s,310*s,92*s,.68);rr(38*s,-33*s,310*s,92*s,6*s);ctx.fill();
-      ctx.fillStyle='#272a2b';rr(48*s,-24*s,286*s,72*s,5*s);ctx.fill();
-      ctx.fillStyle='#17191a';rr(61*s,-18*s,260*s,56*s,4*s);ctx.fill();
+      ctx.strokeStyle = "#21140f";
+      ctx.lineWidth = 2 * scale;
+      roundedRectangle(-195 * scale, 8 * scale, 178 * scale, 49 * scale, 8 * scale);
+      ctx.stroke();
 
-      // receiver highlights and panel cuts
-      ctx.fillStyle='#55595a';rr(67*s,-14*s,245*s,7*s,3*s);ctx.fill();
-      ctx.fillStyle='#111313';rr(80*s,22*s,180*s,5*s,2*s);ctx.fill();
-      ctx.strokeStyle='#626666';ctx.globalAlpha=.38;ctx.lineWidth=1*s;
-      rr(91*s,-12*s,198*s,48*s,4*s);ctx.stroke();ctx.globalAlpha=1;
+      ctx.save();
+      ctx.globalAlpha = 0.18;
+      ctx.strokeStyle = "#d39a72";
+      ctx.lineWidth = 0.7 * scale;
 
-      // bolt and charging handle
-      ctx.fillStyle='#171919';rr((155-boltPx/s)*s,-7*s,126*s,26*s,4*s);ctx.fill();
-      ctx.fillStyle='#777b79';rr((168-boltPx/s)*s,-2*s,92*s,14*s,3*s);ctx.fill();
-      ctx.strokeStyle='#101212';ctx.lineWidth=6*s;line(166*s,10*s,120*s,30*s);line(120*s,30*s,106*s,30*s);
+      for (let i = 0; i < 8; i++) {
+        strokeLine(
+          (-178 + i * 16) * scale,
+          (18 + i * 3) * scale,
+          (-32 + i * 7) * scale,
+          (50 - i * 2) * scale
+        );
+      }
 
-      // selector and controls
-      ctx.fillStyle='#111313';rr(271*s,4*s,20*s,12*s,3*s);ctx.fill();
-      ctx.strokeStyle='#5e6262';ctx.lineWidth=2*s;line(281*s,10*s,281*s,52*s);
-      ctx.fillStyle='#1a1c1c';rr(280*s,51*s,18*s,30*s,4*s);ctx.fill();
-
-      // dust cover seam
-      ctx.fillStyle='#727676';ctx.globalAlpha=.45;rr(64*s,-22*s,245*s,3*s,1*s);ctx.fill();ctx.globalAlpha=1;
-
-      // magazine
-      ctx.save();ctx.translate(150*s,50*s);ctx.rotate(.06);
-      ctx.fillStyle='#171919';rr(-8*s,0,82*s,136*s,8*s);ctx.fill();
-      ctx.fillStyle=metalGradient(-12*s,4*s,86*s,128*s,.42);rr(-12*s,4*s,86*s,128*s,8*s);ctx.fill();
-      ctx.fillStyle='#0e1010';for(let i=0;i<5;i++){rr(-3*s,(18+i*20)*s,68*s,3*s,1*s);ctx.fill()}
       ctx.restore();
 
-      // trigger guard and trigger
-      ctx.strokeStyle='#171919';ctx.lineWidth=9*s;ctx.beginPath();ctx.moveTo(232*s,50*s);ctx.lineTo(232*s,87*s);ctx.quadraticCurveTo(280*s,105*s,310*s,63*s);ctx.stroke();
-      ctx.strokeStyle='#646867';ctx.lineWidth=3*s;ctx.beginPath();ctx.moveTo(258*s,58*s);ctx.quadraticCurveTo(247*s,82*s,265*s,93*s);ctx.stroke();
+      ctx.fillStyle = "#151718";
+      roundedRectangle(-220 * scale, 6 * scale, 35 * scale, 66 * scale, 8 * scale);
+      ctx.fill();
 
-      // pistol grip
-      ctx.save();ctx.translate(306*s,48*s);ctx.rotate(-.14);
-      ctx.fillStyle='#171919';rr(-10*s,0,72*s,112*s,7*s);ctx.fill();
-      ctx.fillStyle=woodGradient(-5*s,4*s,64*s,104*s);rr(-5*s,4*s,64*s,104*s,7*s);ctx.fill();
-      ctx.globalAlpha=.25;ctx.strokeStyle='#24140e';ctx.lineWidth=1*s;for(let i=0;i<6;i++){line(4*s,(17+i*12)*s,48*s,(17+i*12)*s)}ctx.globalAlpha=1;
+      ctx.fillStyle = "#383c3c";
+      roundedRectangle(-216 * scale, 12 * scale, 8 * scale, 54 * scale, 3 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = createMetalGradient(-20 * scale, -35 * scale, 330 * scale, 100 * scale, 0.7);
+      roundedRectangle(-20 * scale, -35 * scale, 330 * scale, 100 * scale, 7 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#151718";
+      roundedRectangle(0, -23 * scale, 288 * scale, 76 * scale, 5 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#3c4040";
+      roundedRectangle(12 * scale, -18 * scale, 260 * scale, 7 * scale, 3 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = createMetalGradient(-38 * scale, -47 * scale, 350 * scale, 17 * scale, 0.55);
+      roundedRectangle(-38 * scale, -47 * scale, 350 * scale, 17 * scale, 4 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#171919";
+
+      for (let i = 0; i < 10; i++) {
+        roundedRectangle(
+          (-28 + i * 31) * scale,
+          -43 * scale,
+          18 * scale,
+          5 * scale,
+          1 * scale
+        );
+        ctx.fill();
+      }
+
+      ctx.fillStyle = createMetalGradient(260 * scale, -30 * scale, 310 * scale, 72 * scale, 0.58);
+      roundedRectangle(260 * scale, -30 * scale, 310 * scale, 72 * scale, 8 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#111314";
+      roundedRectangle(285 * scale, -19 * scale, 260 * scale, 50 * scale, 5 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#343838";
+
+      for (let i = 0; i < 8; i++) {
+        roundedRectangle(
+          (300 + i * 29) * scale,
+          -14 * scale,
+          11 * scale,
+          40 * scale,
+          2 * scale
+        );
+        ctx.fill();
+      }
+
+      ctx.fillStyle = createMetalGradient(540 * scale, -15 * scale, 150 * scale, 30 * scale, 0.8);
+      roundedRectangle(540 * scale, -15 * scale, 150 * scale, 30 * scale, 6 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#171919";
+      roundedRectangle(650 * scale, -24 * scale, 40 * scale, 48 * scale, 5 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#090a0a";
+      roundedRectangle(684 * scale, -14 * scale, 18 * scale, 28 * scale, 5 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#151717";
+      roundedRectangle(
+        (145 - boltTravel * 12) * scale,
+        -10 * scale,
+        130 * scale,
+        27 * scale,
+        4 * scale
+      );
+      ctx.fill();
+
+      ctx.fillStyle = "#777b79";
+      roundedRectangle(
+        (158 - boltTravel * 12) * scale,
+        -4 * scale,
+        92 * scale,
+        13 * scale,
+        3 * scale
+      );
+      ctx.fill();
+
+      ctx.strokeStyle = "#151717";
+      ctx.lineWidth = 5 * scale;
+      strokeLine(155 * scale, 12 * scale, 123 * scale, 31 * scale);
+      strokeLine(123 * scale, 31 * scale, 107 * scale, 31 * scale);
+
+      ctx.fillStyle = "#59301f";
+      roundedRectangle(80 * scale, 48 * scale, 220 * scale, 74 * scale, 8 * scale);
+      ctx.fill();
+
+      ctx.save();
+      ctx.beginPath();
+      roundedRectangle(88 * scale, 55 * scale, 204 * scale, 60 * scale, 7 * scale);
+      ctx.clip();
+
+      ctx.fillStyle = createWoodGradient(88 * scale, 55 * scale, 204 * scale, 60 * scale);
+      ctx.fillRect(88 * scale, 55 * scale, 204 * scale, 60 * scale);
+
+      ctx.globalAlpha = 0.28;
+      ctx.strokeStyle = "#24140d";
+
+      for (let i = 0; i < 7; i++) {
+        strokeLine(
+          100 * scale,
+          (64 + i * 9) * scale,
+          280 * scale,
+          (77 + i * 7) * scale
+        );
+      }
+
       ctx.restore();
 
-      // rear stock
-      ctx.save();ctx.translate(-32*s,-27*s);ctx.rotate(.02);
-      ctx.fillStyle='#171919';ctx.beginPath();ctx.moveTo(12*s,0);ctx.lineTo(-160*s,18*s);ctx.lineTo(-202*s,92*s);ctx.lineTo(-38*s,72*s);ctx.closePath();ctx.fill();
-      ctx.fillStyle=woodGradient(-196*s,17*s,166*s,70*s);ctx.beginPath();ctx.moveTo(0,5*s);ctx.lineTo(-154*s,23*s);ctx.lineTo(-194*s,82*s);ctx.lineTo(-36*s,67*s);ctx.closePath();ctx.fill();
-      ctx.strokeStyle='#b18a69';ctx.globalAlpha=.16;ctx.lineWidth=1*s;
-      for(let i=0;i<7;i++){ctx.beginPath();ctx.moveTo((-10-i*18)*s,(20+i*5)*s);ctx.bezierCurveTo((-70-i*12)*s,(30+i*3)*s,-130*s,(55+i*4)*s,-190*s,(74-i*3)*s);ctx.stroke()}ctx.globalAlpha=1;
+      ctx.save();
+      ctx.translate(105 * scale, 64 * scale);
+      ctx.rotate(0.06);
+
+      ctx.fillStyle = "#141616";
+      roundedRectangle(0, 0, 92 * scale, 145 * scale, 9 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = createMetalGradient(-4 * scale, 8 * scale, 96 * scale, 132 * scale, 0.38);
+      roundedRectangle(-4 * scale, 8 * scale, 96 * scale, 132 * scale, 8 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#171919";
+
+      for (let i = 0; i < 6; i++) {
+        roundedRectangle(
+          6 * scale,
+          (18 + i * 20) * scale,
+          72 * scale,
+          3 * scale,
+          1 * scale
+        );
+        ctx.fill();
+      }
+
       ctx.restore();
 
-      // scratches and wear
-      ctx.save();ctx.globalAlpha=.18;ctx.strokeStyle='#d3d3c9';ctx.lineWidth=.7*s;
-      for(let i=0;i<26;i++){let x=(70+((i*53)%260))*s,y=(-15+((i*31)%70))*s;line(x,y,x+(8+(i%7)*3)*s,y+(i%3-1)*s)}
+      ctx.save();
+      ctx.translate(270 * scale, 50 * scale);
+      ctx.rotate(-0.14);
+
+      ctx.fillStyle = "#151717";
+      roundedRectangle(-8 * scale, 0, 72 * scale, 112 * scale, 8 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#4d2a1d";
+      roundedRectangle(-2 * scale, 6 * scale, 60 * scale, 100 * scale, 7 * scale);
+      ctx.fill();
+
       ctx.restore();
 
-      // muzzle flash
-      if(muzzle>.01){
-        ctx.save();ctx.translate(718*s,-3*s);ctx.globalCompositeOperation='screen';
-        let fi=muzzle;
-        let fg=ctx.createRadialGradient(0,0,2,0,0,80*s*fi);fg.addColorStop(0,'rgba(255,248,205,.98)');fg.addColorStop(.12,'rgba(255,188,70,.92)');fg.addColorStop(.48,'rgba(238,91,20,.32)');fg.addColorStop(1,'rgba(255,80,10,0)');
-        ctx.fillStyle=fg;ctx.beginPath();ctx.arc(0,0,82*s*fi,0,6.28);ctx.fill();
-        ctx.translate(0,0);ctx.rotate(flashSeed);
-        ctx.fillStyle='rgba(255,221,145,'+(fi*.9)+')';
-        for(let i=0;i<7;i++){ctx.save();ctx.rotate(i*6.28/7+flashSeed*.05);ctx.beginPath();ctx.moveTo(2*s,0);ctx.lineTo((38+((i*17)%35))*s*fi,-(5+i%3*4)*s);ctx.lineTo((30+i*5)*s*fi,(7+i%4*3)*s);ctx.closePath();ctx.fill();ctx.restore()}
+      ctx.strokeStyle = "#151717";
+      ctx.lineWidth = 8 * scale;
+      ctx.beginPath();
+      ctx.moveTo(215 * scale, 54 * scale);
+      ctx.lineTo(215 * scale, 92 * scale);
+      ctx.quadraticCurveTo(260 * scale, 112 * scale, 292 * scale, 63 * scale);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#656a69";
+      ctx.lineWidth = 3 * scale;
+      ctx.beginPath();
+      ctx.moveTo(244 * scale, 60 * scale);
+      ctx.quadraticCurveTo(232 * scale, 86 * scale, 248 * scale, 98 * scale);
+      ctx.stroke();
+
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = "#e1e3dc";
+      ctx.lineWidth = 0.65 * scale;
+
+      for (let i = 0; i < 24; i++) {
+        const x = (10 + (i * 37) % 270) * scale;
+        const y = (-24 + (i * 19) % 82) * scale;
+
+        strokeLine(
+          x,
+          y,
+          x + (5 + i % 6) * scale,
+          y + (i % 3 - 1) * scale
+        );
+      }
+
+      ctx.restore();
+    }
+
+    function drawHelios(scale) {
+      ctx.fillStyle = createMetalGradient(-150 * scale, -16 * scale, 790 * scale, 54 * scale, 0.52);
+      roundedRectangle(-150 * scale, -16 * scale, 790 * scale, 54 * scale, 14 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#10191a";
+      roundedRectangle(-135 * scale, -8 * scale, 760 * scale, 38 * scale, 10 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#62efff";
+      roundedRectangle(-115 * scale, -11 * scale, 650 * scale, 5 * scale, 3 * scale);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = "#2bd3e8";
+      roundedRectangle(-98 * scale, 30 * scale, 620 * scale, 4 * scale, 2 * scale);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = "#1b2527";
+      ctx.beginPath();
+      ctx.moveTo(-120 * scale, -16 * scale);
+      ctx.lineTo(-205 * scale, -48 * scale);
+      ctx.lineTo(-205 * scale, 55 * scale);
+      ctx.lineTo(-80 * scale, 38 * scale);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = "#5b777a";
+      ctx.lineWidth = 2 * scale;
+      ctx.stroke();
+
+      ctx.fillStyle = "#27383a";
+      roundedRectangle(-54 * scale, -42 * scale, 210 * scale, 14 * scale, 7 * scale);
+      ctx.fill();
+      roundedRectangle(-32 * scale, 38 * scale, 190 * scale, 15 * scale, 7 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#111719";
+      roundedRectangle(520 * scale, -27 * scale, 150 * scale, 76 * scale, 18 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#b6faff";
+      roundedRectangle(624 * scale, -20 * scale, 42 * scale, 62 * scale, 12 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#17262a";
+      roundedRectangle(652 * scale, -12 * scale, 34 * scale, 46 * scale, 10 * scale);
+      ctx.fill();
+
+      ctx.strokeStyle = "#74f6ff";
+      ctx.lineWidth = 3 * scale;
+      roundedRectangle(652 * scale, -12 * scale, 34 * scale, 46 * scale, 10 * scale);
+      ctx.stroke();
+
+      ctx.fillStyle = "#111718";
+      roundedRectangle(155 * scale, 38 * scale, 88 * scale, 118 * scale, 12 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#26383a";
+      roundedRectangle(168 * scale, 48 * scale, 62 * scale, 96 * scale, 9 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#62dbe8";
+
+      for (let i = 0; i < 5; i++) {
+        roundedRectangle(
+          177 * scale,
+          (60 + i * 15) * scale,
+          44 * scale,
+          3 * scale,
+          2 * scale
+        );
+        ctx.fill();
+      }
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+
+      const core = ctx.createRadialGradient(
+        430 * scale,
+        10 * scale,
+        2,
+        430 * scale,
+        10 * scale,
+        170 * scale
+      );
+
+      core.addColorStop(0, "rgba(225,255,255,.75)");
+      core.addColorStop(0.25, "rgba(65,233,255,.32)");
+      core.addColorStop(1, "rgba(65,233,255,0)");
+
+      ctx.fillStyle = core;
+      ctx.fillRect(260 * scale, -160 * scale, 340 * scale, 340 * scale);
+      ctx.restore();
+    }
+
+    function drawVoidbreach(scale) {
+      ctx.fillStyle = "#182023";
+      roundedRectangle(-210 * scale, -8 * scale, 280 * scale, 86 * scale, 16 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#2d3738";
+      roundedRectangle(-195 * scale, 0, 242 * scale, 64 * scale, 12 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#1a1d21";
+      ctx.beginPath();
+      ctx.moveTo(-20 * scale, -45 * scale);
+      ctx.lineTo(430 * scale, -60 * scale);
+      ctx.lineTo(510 * scale, -28 * scale);
+      ctx.lineTo(490 * scale, 76 * scale);
+      ctx.lineTo(20 * scale, 92 * scale);
+      ctx.lineTo(-20 * scale, 45 * scale);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.fillStyle = "#343b40";
+      ctx.beginPath();
+      ctx.moveTo(-4 * scale, -38 * scale);
+      ctx.lineTo(410 * scale, -48 * scale);
+      ctx.lineTo(470 * scale, -20 * scale);
+      ctx.lineTo(450 * scale, 58 * scale);
+      ctx.lineTo(20 * scale, 78 * scale);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = "#bd75ff";
+      ctx.lineWidth = 5 * scale;
+      ctx.beginPath();
+      ctx.moveTo(40 * scale, -24 * scale);
+      ctx.lineTo(380 * scale, -31 * scale);
+      ctx.quadraticCurveTo(425 * scale, -28 * scale, 445 * scale, -8 * scale);
+      ctx.stroke();
+
+      ctx.strokeStyle = "#f0aaff";
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth = 1 * scale;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+
+      ctx.fillStyle = createMetalGradient(440 * scale, -32 * scale, 255 * scale, 80 * scale, 0.48);
+      roundedRectangle(440 * scale, -32 * scale, 255 * scale, 80 * scale, 18 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#15191c";
+      roundedRectangle(595 * scale, -20 * scale, 100 * scale, 56 * scale, 18 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#bd75ff";
+      ctx.globalAlpha = 0.65;
+      roundedRectangle(606 * scale, -14 * scale, 82 * scale, 44 * scale, 15 * scale);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      ctx.strokeStyle = "#6b5b79";
+      ctx.lineWidth = 3 * scale;
+
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo((20 + i * 82) * scale, -34 * scale);
+        ctx.lineTo((50 + i * 82) * scale, 70 * scale);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#17191c";
+      roundedRectangle(95 * scale, 74 * scale, 105 * scale, 120 * scale, 13 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#33393d";
+      roundedRectangle(108 * scale, 84 * scale, 78 * scale, 98 * scale, 10 * scale);
+      ctx.fill();
+
+      ctx.fillStyle = "#1a1d20";
+      ctx.beginPath();
+      ctx.moveTo(-20 * scale, 62 * scale);
+      ctx.lineTo(-180 * scale, 78 * scale);
+      ctx.lineTo(-210 * scale, 125 * scale);
+      ctx.lineTo(-26 * scale, 108 * scale);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function drawWeapon() {
+      const o = origin();
+
+      ctx.save();
+      ctx.translate(o.x, o.y);
+      ctx.rotate(-0.018 - recoil * 0.012);
+
+      drawShadow(o.scale);
+
+      if (weaponIndex === 0) {
+        drawWarden(o.scale);
+      } else if (weaponIndex === 1) {
+        drawHelios(o.scale);
+      } else {
+        drawVoidbreach(o.scale);
+      }
+
+      ctx.restore();
+    }
+
+    function drawMuzzleFlash(scale) {
+      if (muzzleAmount < 0.01) {
+        return;
+      }
+
+      const o = origin();
+      const position = muzzlePosition();
+
+      ctx.save();
+      ctx.translate(position.x, position.y);
+      ctx.globalCompositeOperation = "lighter";
+
+      if (weaponIndex === 1) {
+        const gradient = ctx.createRadialGradient(
+          0,
+          0,
+          2,
+          0,
+          0,
+          145 * scale * muzzleAmount
+        );
+
+        gradient.addColorStop(0, "rgba(235,255,255,.95)");
+        gradient.addColorStop(0.14, "rgba(95,245,255,.9)");
+        gradient.addColorStop(0.5, "rgba(30,190,255,.28)");
+        gradient.addColorStop(1, "rgba(20,170,255,0)");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, 145 * scale * muzzleAmount, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = `rgba(195,252,255,${muzzleAmount})`;
+        ctx.lineWidth = 3 * scale;
+        ctx.beginPath();
+        ctx.arc(0, 0, 38 * scale * muzzleAmount, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (weaponIndex === 2) {
+        const gradient = ctx.createRadialGradient(
+          0,
+          0,
+          2,
+          0,
+          0,
+          170 * scale * muzzleAmount
+        );
+
+        gradient.addColorStop(0, "rgba(255,238,255,.98)");
+        gradient.addColorStop(0.12, "rgba(225,160,255,.95)");
+        gradient.addColorStop(0.38, "rgba(145,70,255,.42)");
+        gradient.addColorStop(0.72, "rgba(95,40,210,.16)");
+        gradient.addColorStop(1, "rgba(80,20,180,0)");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, 170 * scale * muzzleAmount, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        const gradient = ctx.createRadialGradient(
+          0,
+          0,
+          2,
+          0,
+          0,
+          120 * scale * muzzleAmount
+        );
+
+        gradient.addColorStop(0, "rgba(255,255,245,1)");
+        gradient.addColorStop(0.11, "rgba(255,242,178,1)");
+        gradient.addColorStop(0.28, "rgba(255,190,95,.96)");
+        gradient.addColorStop(0.58, "rgba(255,110,28,.48)");
+        gradient.addColorStop(0.8, "rgba(248,70,10,.12)");
+        gradient.addColorStop(1, "rgba(255,70,10,0)");
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, 120 * scale * muzzleAmount, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = `rgba(255,244,202,${muzzleAmount})`;
+        ctx.rotate(elapsed * 0.017);
+
+        for (let i = 0; i < 9; i++) {
+          ctx.save();
+          ctx.rotate(i * (Math.PI * 2) / 9);
+          ctx.beginPath();
+          ctx.moveTo(4 * scale, 0);
+          ctx.lineTo(
+            (48 + Math.abs(Math.sin(i * 2)) * 36) * scale * muzzleAmount,
+            -(8 + i % 4 * 4) * scale
+          );
+          ctx.lineTo(
+            (42 + i * 3) * scale * muzzleAmount,
+            (9 + i % 3 * 4) * scale
+          );
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function update(delta) {
+      recoil = Math.max(0, recoil - delta * 5.4);
+      boltTravel = Math.max(0, boltTravel - delta * 8);
+      muzzleAmount = Math.max(
+        0,
+        muzzleAmount - delta * (weaponIndex === 1 ? 7 : 11)
+      );
+
+      if (mouseDown) {
+        fireWeapon();
+      }
+
+      for (const particle of particles) {
+        particle.life += delta;
+        particle.x += particle.vx * delta;
+        particle.y += particle.vy * delta;
+        particle.vy += 120 * delta;
+        particle.alpha = 1 - particle.life / particle.maxLife;
+      }
+
+      for (let i = particles.length - 1; i >= 0; i--) {
+        if (particles[i].alpha <= 0) {
+          particles.splice(i, 1);
+        }
+      }
+
+      for (const spark of sparks) {
+        spark.life += delta;
+        spark.x += spark.vx * delta;
+        spark.y += spark.vy * delta;
+        spark.vy += 260 * delta;
+        spark.alpha = 1 - spark.life / spark.maxLife;
+      }
+
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        if (sparks[i].alpha <= 0) {
+          sparks.splice(i, 1);
+        }
+      }
+
+      for (const casing of casings) {
+        casing.life += delta;
+        casing.x += casing.vx * delta;
+        casing.y += casing.vy * delta;
+        casing.vy += 260 * delta;
+        casing.rotation += casing.vr * delta;
+        casing.alpha = 1 - casing.life / casing.maxLife;
+      }
+
+      for (let i = casings.length - 1; i >= 0; i--) {
+        if (casings[i].alpha <= 0) {
+          casings.splice(i, 1);
+        }
+      }
+
+      for (const cloud of smoke) {
+        cloud.life += delta;
+        cloud.x += cloud.vx * delta;
+        cloud.y += cloud.vy * delta;
+        cloud.vx *= Math.pow(0.96, delta * 60);
+        cloud.vy -= 5 * delta;
+        cloud.radius += 8 * delta;
+        cloud.alpha = (1 - cloud.life / cloud.maxLife) * 0.18;
+        cloud.spin += delta * 0.25;
+      }
+
+      for (let i = smoke.length - 1; i >= 0; i--) {
+        if (smoke[i].life >= smoke[i].maxLife) {
+          smoke.splice(i, 1);
+        }
+      }
+
+      for (const tracer of tracers) {
+        tracer.alpha -= delta * (tracer.type === 1 ? 4 : 7);
+      }
+
+      for (let i = tracers.length - 1; i >= 0; i--) {
+        if (tracers[i].alpha <= 0) {
+          tracers.splice(i, 1);
+        }
+      }
+
+      for (const ring of rings) {
+        ring.alpha -= delta * 2.8;
+        ring.radius += delta * ring.growth;
+      }
+
+      for (let i = rings.length - 1; i >= 0; i--) {
+        if (rings[i].alpha <= 0) {
+          rings.splice(i, 1);
+        }
+      }
+    }
+
+    function drawEffects(scale) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+
+      for (const tracer of tracers) {
+        ctx.globalAlpha = tracer.alpha;
+
+        const gradient = ctx.createLinearGradient(
+          tracer.x1,
+          tracer.y1,
+          tracer.x2,
+          tracer.y2
+        );
+
+        if (tracer.type === 1) {
+          gradient.addColorStop(0, "rgba(235,255,255,1)");
+          gradient.addColorStop(0.15, "rgba(80,245,255,.95)");
+          gradient.addColorStop(0.55, "rgba(35,205,255,.55)");
+          gradient.addColorStop(1, "rgba(20,180,255,0)");
+        } else if (tracer.type === 2) {
+          gradient.addColorStop(0, "rgba(255,245,255,1)");
+          gradient.addColorStop(0.12, "rgba(220,150,255,.95)");
+          gradient.addColorStop(0.55, "rgba(150,70,255,.45)");
+          gradient.addColorStop(1, "rgba(100,30,255,0)");
+        } else {
+          gradient.addColorStop(0, "rgba(255,240,190,.7)");
+          gradient.addColorStop(0.2, "rgba(255,172,75,.9)");
+          gradient.addColorStop(1, "rgba(255,120,40,0)");
+        }
+
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = tracer.width * scale;
+        ctx.beginPath();
+        ctx.moveTo(tracer.x1, tracer.y1);
+        ctx.quadraticCurveTo(
+          tracer.x1 + (tracer.x2 - tracer.x1) * 0.5,
+          tracer.y1 - 8 * scale,
+          tracer.x2,
+          tracer.y2
+        );
+        ctx.stroke();
+        ctx.lineCap = "round";
+      }
+
+      for (const ring of rings) {
+        ctx.globalAlpha = ring.alpha * 0.8;
+        ctx.strokeStyle = ring.cyan ? "#87f7ff" : "#d7a0ff";
+        ctx.lineWidth = 2 * scale;
+        ctx.beginPath();
+        ctx.arc(
+          ring.x,
+          ring.y,
+          ring.radius * scale,
+          0,
+          Math.PI * 2
+        );
+        ctx.stroke();
+      }
+
+      for (const particle of particles) {
+        ctx.globalAlpha = particle.alpha;
+        ctx.fillStyle =
+          particle.type === 2 ? "#cf8cff" : "#ffc878";
+
+        ctx.beginPath();
+        ctx.arc(
+          particle.x,
+          particle.y,
+          particle.radius * scale,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      for (const spark of sparks) {
+        ctx.globalAlpha = spark.alpha;
+        ctx.fillStyle = "#aef8ff";
+        ctx.beginPath();
+        ctx.arc(
+          spark.x,
+          spark.y,
+          spark.radius * scale,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      ctx.restore();
+
+      for (const cloud of smoke) {
+        ctx.save();
+        ctx.translate(cloud.x, cloud.y);
+        ctx.rotate(cloud.spin);
+        ctx.globalAlpha = cloud.alpha;
+
+        const gradient = ctx.createRadialGradient(
+          0,
+          0,
+          cloud.radius * 0.1,
+          0,
+          0,
+          cloud.radius
+        );
+
+        gradient.addColorStop(
+          0,
+          "rgba(188,192,188,.9)"
+        );
+        gradient.addColorStop(
+          0.55,
+          "rgba(125,128,125,.5)"
+        );
+        gradient.addColorStop(
+          1,
+          "rgba(90,92,91,0)"
+        );
+
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(0, 0, cloud.radius, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
       }
-      ctx.restore();
+
+      for (const casing of casings) {
+        ctx.save();
+        ctx.translate(casing.x, casing.y);
+        ctx.rotate(casing.rotation);
+        ctx.globalAlpha = casing.alpha;
+
+        ctx.fillStyle = "#9a702f";
+        roundedRectangle(
+          -7 * scale,
+          -3 * scale,
+          14 * scale,
+          6 * scale,
+          2 * scale
+        );
+        ctx.fill();
+
+        ctx.fillStyle = "#dec278";
+        roundedRectangle(
+          -5 * scale,
+          -2 * scale,
+          8 * scale,
+          4 * scale,
+          1 * scale
+        );
+        ctx.fill();
+
+        ctx.restore();
+      }
     }
 
-    function update(dt,t){
-      recoil=Math.max(0,recoil-dt*5.8);
-      bolt=Math.max(0,bolt-dt*8.5);
-      muzzle=Math.max(0,muzzle-dt*11);
-      screenKick=Math.max(0,screenKick-dt*10);
+    function frame(now) {
+      if (!lastFrame) {
+        lastFrame = now;
+      }
 
-      if(leftDown && t-lastShot<100){ /* already controlled by fire cadence */ }
-      if(leftDown){fire();}
+      const delta = Math.min(
+        0.033,
+        (now - lastFrame) / 1000
+      );
 
-      particles.forEach(p=>{p.life+=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=100*dt;p.a=Math.max(0,1-p.life/p.max)});
-      particles=particles.filter(p=>p.a>0);
+      lastFrame = now;
+      elapsed = now;
 
-      casings.forEach(c=>{c.life+=dt;c.x+=c.vx*dt;c.y+=c.vy*dt;c.vy+=c.drop*dt;c.rot+=c.vr*dt;c.a=Math.max(0,1-c.life/c.max)});
-      casings=casings.filter(c=>c.a>0);
+      update(delta);
 
-      smoke.forEach(s=>{s.life+=dt;s.x+=s.vx*dt;s.y+=s.vy*dt;s.vx*=Math.pow(.94,dt*60);s.vy-=4*dt;s.r+=7*dt;s.a=(1-s.life/s.max)*.22;s.spin+=dt*.3});
-      smoke=smoke.filter(s=>s.life<s.max);
+      ctx.clearRect(0, 0, width, height);
 
-      tracers.forEach(p=>{p.a-=dt*7});tracers=tracers.filter(p=>p.a>0);
-    }
-
-    function drawEffects(s){
-      ctx.save();ctx.globalCompositeOperation='screen';
-      tracers.forEach(p=>{
-        ctx.globalAlpha=p.a*.95;
-        let g=ctx.createLinearGradient(p.x1,p.y1,p.x2,p.y2);g.addColorStop(0,'rgba(255,250,210,.1)');g.addColorStop(.08,'rgba(255,214,128,.95)');g.addColorStop(.35,'rgba(255,154,70,.55)');g.addColorStop(1,'rgba(255,150,70,0)');
-        ctx.strokeStyle=g;ctx.lineWidth=p.w*s;ctx.beginPath();ctx.moveTo(p.x1,p.y1);ctx.quadraticCurveTo(p.x1+(p.x2-p.x1)*.48,p.y1-18*s,p.x2,p.y2);ctx.stroke();
-      });
-      particles.forEach(p=>{ctx.globalAlpha=p.a;ctx.fillStyle='#ffc87c';ctx.beginPath();ctx.arc(p.x,p.y,p.r*s,0,6.28);ctx.fill()});
-      ctx.restore();
-
-      smoke.forEach(s=>{
-        ctx.save();ctx.translate(s.x,s.y);ctx.rotate(s.spin);ctx.globalAlpha=s.a;
-        let g=ctx.createRadialGradient(0,0,s.r*.15,0,0,s.r);g.addColorStop(0,'rgba(180,184,180,.9)');g.addColorStop(.5,'rgba(115,119,116,.6)');g.addColorStop(1,'rgba(80,82,81,0)');
-        ctx.fillStyle=g;ctx.beginPath();ctx.arc(0,0,s.r,0,6.28);ctx.fill();ctx.restore();
-      });
-
-      casings.forEach(c=>{
-        ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.rot);ctx.globalAlpha=c.a;
-        ctx.fillStyle='#a87835';rr(-7*s,-3*s,14*s,6*s,2*s);ctx.fill();
-        ctx.fillStyle='#d3b56e';rr(-5*s,-2*s,8*s,4*s,1*s);ctx.fill();
-        ctx.fillStyle='#5e4526';ctx.fillRect(-7*s,-2*s,3*s,4*s);ctx.restore();
-      });
-    }
-
-    function frame(now){
-      if(!last)last=now;let dt=Math.min(.033,(now-last)/1000);last=now;time=now;
-      let s=Math.min(w,h)/720;
-      update(dt,now);
-      ctx.clearRect(0,0,w,h);
       drawBackground(now);
-      drawGun(s,now);
-      drawEffects(s);
+
+      drawWeapon();
+
+      const scale = Math.min(width, height) / 720;
+
+      drawMuzzleFlash(scale);
+      drawEffects(scale);
+
       requestAnimationFrame(frame);
     }
+
     requestAnimationFrame(frame);
   </script>
 </body>
